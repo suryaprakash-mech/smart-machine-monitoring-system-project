@@ -1,0 +1,148 @@
+Great! Let's start coding for ESP32 to read sensor data and send it to AWS IoT Core.
+
+
+---
+
+Step 1: Install Required Libraries
+
+Before writing code, make sure you have these libraries installed in Arduino IDE:
+
+1. WiFi.h (for Wi-Fi connection)
+
+
+2. PubSubClient.h (for MQTT communication with AWS IoT)
+
+
+
+
+---
+
+Step 2: ESP32 Code for Sensor Data Collection & AWS IoT Publishing
+
+#include <WiFi.h>
+#include <PubSubClient.h>
+
+// WiFi Credentials
+const char* WIFI_SSID = "Your_WiFi_Name";
+const char* WIFI_PASSWORD = "Your_WiFi_Password";
+
+// AWS IoT Core Details
+const char* AWS_IOT_ENDPOINT = "Your_AWS_IoT_Endpoint";  // Example: "a1b2c3d4e5.iot-region.amazonaws.com"
+
+// AWS IoT MQTT Topics
+const char* AWS_IOT_PUBLISH_TOPIC = "machine/health";
+
+// ESP32 Pins
+#define IR_SENSOR_PIN 15
+#define LM35_PIN 34
+#define SW420_PIN 32
+
+// WiFi & MQTT Client
+WiFiClientSecure espClient;
+PubSubClient client(espClient);
+
+// Function to connect WiFi
+void connectWiFi() {
+  Serial.print("Connecting to WiFi...");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("Connected!");
+}
+
+// Function to connect MQTT
+void connectAWSIoT() {
+  espClient.setCACert(AWS_CERT_CA);
+  espClient.setCertificate(AWS_CERT_CRT);
+  espClient.setPrivateKey(AWS_CERT_PRIVATE);
+  client.setServer(AWS_IOT_ENDPOINT, 8883);
+
+  while (!client.connected()) {
+    Serial.print("Connecting to AWS IoT...");
+    if (client.connect("ESP32_Client")) {
+      Serial.println("Connected!");
+    } else {
+      Serial.print("Failed, retrying in 5s...");
+      delay(5000);
+    }
+  }
+}
+
+// Function to read sensor values
+void readSensorsAndSendData() {
+  // Read IR Sensor (RPM Measurement)
+  int rpm = pulseIn(IR_SENSOR_PIN, HIGH); 
+
+  // Read LM35 (Temperature)
+  int rawValue = analogRead(LM35_PIN);
+  float temperature = rawValue * (3.3 / 4095.0) * 100.0;  
+
+  // Read SW-420 (Vibration Detection)
+  int vibration = digitalRead(SW420_PIN);
+
+  // Prepare JSON Data
+  String payload = "{";
+  payload += "\"rpm\": " + String(rpm) + ",";
+  payload += "\"temperature\": " + String(temperature) + ",";
+  payload += "\"vibration\": " + String(vibration);
+  payload += "}";
+
+  // Publish to AWS IoT Core
+  client.publish(AWS_IOT_PUBLISH_TOPIC, payload.c_str());
+  Serial.println("Data sent: " + payload);
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(IR_SENSOR_PIN, INPUT);
+  pinMode(LM35_PIN, INPUT);
+  pinMode(SW420_PIN, INPUT);
+
+  connectWiFi();
+  connectAWSIoT();
+}
+
+void loop() {
+  readSensorsAndSendData();
+  delay(5000);  // Send data every 5 seconds
+}
+
+
+---
+
+Step 3: Upload & Test Code
+
+1. Replace Wi-Fi credentials (Your_WiFi_Name, Your_WiFi_Password).
+
+
+2. Replace AWS IoT Endpoint (Your_AWS_IoT_Endpoint).
+
+
+3. Upload the code to ESP32 using Arduino IDE.
+
+
+4. Open Serial Monitor (115200 baud rate) to check logs.
+
+
+
+
+---
+
+Step 4: Verify Data in AWS IoT Core
+
+1. Go to AWS IoT Core → MQTT Test Client
+
+
+2. Subscribe to "machine/health" topic
+
+
+3. Check if sensor data is received in JSON format
+
+
+
+
+---
+
+Let me know if you face any issues or if you want modifications!
