@@ -1,0 +1,156 @@
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+#include <DHT.h>
+
+// WiFi Credentials
+const char* ssid = "Benny";
+const char* password = "jasonraj";
+
+// AWS IoT Credentials
+const char* mqtt_server = "a23f194m4vwgrl-ats.iot.eu-north-1.amazonaws.com";
+const char* mqtt_topic = "machine/data";
+
+// AWS IoT Certificates
+const char* AWS_CERT_CA = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF
+ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6
+b24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTEL
+MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv
+b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj
+ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM
+9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw
+IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6
+VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L
+93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm
+jgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC
+AYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUA
+A4IBAQCY8jdaQZChGsV2USggNiMOruYou6r4lK5IpDB/G/wkjUu0yKGX9rbxenDI
+U5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUs
+N+gDS63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vv
+o/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU
+5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpy
+rqXRfboQnoZsG4q5WTP468SQvvG5
+-----END CERTIFICATE-----
+)EOF";
+
+const char* AWS_CERT_CRT = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIDWTCCAkGgAwIBAgIUTw4MTPJdYbQOskUC+3YfT5SHqz8wDQYJKoZIhvcNAQEL
+BQAwTTFLMEkGA1UECwxCQW1hem9uIFdlYiBTZXJ2aWNlcyBPPUFtYXpvbi5jb20g
+SW5jLiBMPVNlYXR0bGUgU1Q9V2FzaGluZ3RvbiBDPVVTMB4XDTI1MDMyMDE2MzA1
+MloXDTQ5MTIzMTIzNTk1OVowHjEcMBoGA1UEAwwTQVdTIElvVCBDZXJ0aWZpY2F0
+ZTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAM/yiEtAZoRo4QZaRVq8
+9zI0tAeNjix6dM0Tj3dr1aGnkHw2g9bvJ/ZTZA4Fi2Y0lPJQF6WHfPeeZoENtlbU
+qpcxxMsRwRo/66Jq1q1DL46DV5XlePbFt5nalyz6pz9SZzcSiDKWqzqg1f6+jPx/
+D55JC+/B1lPhR2DrBd0vMR0+RxiKEK8oW6eQLXSiuV57gfiut3SKmO5fNCU8Rbb7
+DFRdBYHDj/8YD4b6NocF/yD/bTnaVHYqHTqxPqoWENPwDW8kOwrj21OwDQuB8jJI
+q9yU1vLMCtIM0JdiL4j6PCe++wbh9e2cTTr5KpOqk5FugAJ+K7PkFNEMhvSIVll6
+QtECAwEAAaNgMF4wHwYDVR0jBBgwFoAUXy4b5xsSWyVVMW9sjSSZMoVUe00wHQYD
+VR0OBBYEFLPovJ7iClhBh0RZJM6MQdbBIa9BMAwGA1UdEwEB/wQCMAAwDgYDVR0P
+AQH/BAQDAgeAMA0GCSqGSIb3DQEBCwUAA4IBAQCVDWZbyB38QCOV90qEsnKLdUen
+G37zwl0uBwFzqQWQqE3wsI4paOfi+mtpmIj0163T77Ox/VVCuQ3H6ULrlJkeWWif
+0UueKCujfspPIvOXK4jfoXveck7hKbdS7LwAuxaK3h/xdD7ZKbmKL4DjFqZAKDgZ
+Adhut/4dhpy7ZIa2Gi5y15llgfhEB47fHK4QidV66PIGfqQZ7J+RTZup/Zn1vk+I
+AkKORO73ErnCgcKzglFTM5HqTOk8jyHwLHMyl98G1unLakoZB1xxOJvOTQuacReD
+n1yo8pZxTptlyWtRyovCfpEKNZBCIYDi2lUygsL1Z8d6hvu91u6zJLQcKFbr
+-----END CERTIFICATE-----
+)EOF";
+
+const char* AWS_CERT_PRIVATE = R"EOF(
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEAz/KIS0BmhGjhBlpFWrz3MjS0B42OLHp0zROPd2vVoaeQfDaD
+1u8n9lNkDgWLZjSU8lAXpYd8955mgQ22VtSqlzHEyxHBGj/romrWrUMvjoNXleV4
+9sW3mdqXLPqnP1JnNxKIMparOqDV/r6M/H8PnkkL78HWU+FHYOsF3S8xHT5HGIoQ
+ryhbp5AtdKK5XnuB+K63dIqY7l80JTxFtvsMVF0FgcOP/xgPhvo2hwX/IP9tOdpU
+diodOrE+qhYQ0/ANbyQ7CuPbU7ANC4HyMkir3JTW8swK0gzQl2IviPo8J777BuH1
+7ZxNOvkqk6qTkW6AAn4rs+QU0QyG9IhWWXpC0QIDAQABAoIBABuNC6fEuZBzgNTh
+ouy5upqpRuz1QU/9TXpaTBjLbbuEQu1iH6ebehT1yXzeGTEKaG2OVQO2ZsU79GLG
+2VC5znxHuMYa7RW4QFT9iMHd8/AS0MjoZVV0rrWws3TfJMeL+GbgirEBK2CSLKga
+wP03LG+RSAaVDPuCDn31xYoflYdFGurH8fcAx/BeNHxhK4F24ZFR0Isifqj9d4Fp
+XsnVn7obDGbDuFoOsPCbzUsfkv0a4y8YCHzVUm1g32u9KM0dNfeg/bRh3eimTRSF
+xMrsF7IQgLNuNGwDkiKDNyhJVX9ichkZXhNZUDI0H/Y4aL5kRIHzrIn4XqOTVHu3
+ZfFNOY0CgYEA6nZsOKpNOErYZHVjCegsWT9gSQWCDJt8vLBwxLXs39odErV39LAJ
+pk2QwOQ9x3jlrh68kBJ5cLWtwQ4/dLE/XbNgudm0FhlZJuMyRT713MXwKhn2HMy4
+uG+tWx5cHzUQ9IhivjzHsYZ5HOOIQrLOcDVpvcVj5fiKW4fYRqBKV68CgYEA4wyV
+WHKv8oi7TERldNTZdmA6LkA+Lv8AhkoqlJMhhwcJiZvK2fdujgohBd5P3WtAY9te
+K43TqZSDRoRDrkJp1i8SkWWPlM0/HUQlxWaibI1OWy5tY0SRzDRnNgUBTMcL+R9P
++xUPlmIG7s8rKW1pG8tOM5DlLGZ4M+KBQKyBLX8CgYEAxp2M7a+ufHpCt08Nl83b
+C7t5OEJ3OXDaCQm6bZjjUXn2WOvq8xfRBNT+Q7jVcM3EW2zkNXPA9i6hQ0JrlNG1
+qQ2Uabu3J2VPtXaPFkPQiLYQzclySFFQRcUs6Fxek30joNKMOzVHwOX2YPeKbV4F
+LN7CdaTqDF0v73uzRZjxgTcCgYB08v1WMrTYS3+WOEC+HgjpRYWSXzrogCboBPnL
+z8FcSM6r19hzz1Rdy2/ZEvq2RVFEXjEyY/pbhgjcYLJv5vuW/GYnCFYdwl65F2oR
+NN2C5oIuy0pC8IXc1j03gPp7bqeHKY7L+LwvrMx/Y6yKyTVzwJPGUeMJrLpLl2cW
+RgS/xwKBgQCTkbFczaCdyjUFCXrBMpeisBg3CmKeW7FqqfAbwfWbCbqMcvSQY4X9
++6XO3CvmeUJT+Se1xZc7PBJsm/+H5ozOMTDQxLnu6Uzzn6LsbKshBPZ1oiGOAak4
+nGafz2dy5GzvW+FUGpWReyL9+qVz9VQkLRK+v9/DVOc1tn4xTcTj/A==
+-----END RSA PRIVATE KEY-----
+
+)EOF";
+
+// Secure WiFi Client for SSL/TLS
+WiFiClientSecure espClient;
+PubSubClient client(espClient);
+
+// Sensor Pins
+#define IR_SENSOR 5
+#define VIBRATION_SENSOR 18
+#define DHTPIN 4
+#define DHTTYPE DHT11
+
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(115200);
+  
+  pinMode(IR_SENSOR, INPUT);
+  pinMode(VIBRATION_SENSOR, INPUT);
+  
+  dht.begin();
+
+  // Connect to WiFi
+  connectWiFi();
+  
+  // Configure AWS IoT Certificates
+  espClient.setCACert(AWS_CERT_CA);
+  espClient.setCertificate(AWS_CERT_CRT);
+  espClient.setPrivateKey(AWS_CERT_PRIVATE);
+
+  client.setServer(mqtt_server, 8883);
+}
+
+void connectWiFi() {
+  Serial.print("WiFi Connecting...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("Connected!");
+}
+
+void sendData() {
+  int rpm = digitalRead(IR_SENSOR);
+  int vibration = digitalRead(VIBRATION_SENSOR);
+  float temperature = dht.readTemperature();
+  
+  String payload = "{";
+  payload += "\"rpm\": " + String(rpm) + ",";
+  payload += "\"vibration\": " + String(vibration) + ",";
+  payload += "\"temperature\": " + String(temperature);
+  payload += "}";
+  
+  Serial.println("Sending Data: " + payload);
+  client.publish(mqtt_topic, payload.c_str());
+}
+
+void loop() {
+  if (!client.connected()) {
+    connectWiFi();
+  }
+  client.loop();
+  
+  sendData();
+  delay(5000); // Send data every 5 seconds
+}
